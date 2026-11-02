@@ -44,7 +44,19 @@ export class Camera extends EventTarget {
     this.autoTried = false;
     this.lastFrame = 0;
     this.mutedSince = 0;
+    this.needsTap = false; // iOS ha rifiutato play(): serve un tocco
+    this.frozenRestarts = [];
+    this.log = []; // ultimi eventi, mostrati in "Info tecniche"
     this.timers = {};
+
+    // iOS può mettere in pausa il video (per esempio quando parte un altro
+    // elemento multimediale): lo si fa ripartire.
+    video.addEventListener('pause', () => {
+      if (!this.active || !this.stream || document.visibilityState !== 'visible') return;
+      this.note('video messo in pausa');
+      clearTimeout(this.timers.replay);
+      this.timers.replay = setTimeout(() => this.play(), 250);
+    });
 
     this.onVisibility = () => {
       if (document.visibilityState !== 'visible') return;
@@ -68,6 +80,34 @@ export class Camera extends EventTarget {
     Object.assign(this.prefs, p);
   }
 
+  note(text) {
+    const t = new Date().toTimeString().slice(0, 8);
+    this.log.push(`${t} ${text}`);
+    if (this.log.length > 30) this.log.shift();
+    console.info('[fotocamera]', text);
+  }
+
+  // Avvia la riproduzione; se iOS la rifiuta si chiede un tocco all'utente.
+  play() {
+    if (!this.stream) return Promise.resolve();
+    return this.video.play().then(
+      () => {
+        if (this.needsTap) {
+          this.needsTap = false;
+          this.emit('status');
+        }
+      },
+      (e) => {
+        if (!this.stream || e?.name !== 'NotAllowedError') return;
+        this.note(`riproduzione rifiutata (${e.name})`);
+        if (!this.needsTap) {
+          this.needsTap = true;
+          this.emit('status');
+        }
+      },
+    );
+  }
+
   start() {
     if (this.active) return this.pending || Promise.resolve();
     this.active = true;
@@ -89,6 +129,7 @@ export class Camera extends EventTarget {
     clearTimeout(this.timers.retry);
     clearTimeout(this.timers.check);
     clearTimeout(this.timers.resume);
+    clearTimeout(this.timers.replay);
     this.release();
     this.setStatus('idle');
   }
@@ -145,10 +186,10 @@ export class Camera extends EventTarget {
       this.setStatus(window.isSecureContext === false ? 'insecure' : 'unsupported');
       return;
     }
-    console.info('[fotocamera] apertura:', reason);
+    this.note(`apertura: ${reason}`);
     this.release();
-    // iOS a volte rifiuta se si riapre subito dopo aver chiuso.
-    if (reason !== 'avvio') await sleep(150);
+    // iOS a volte dà un video nero se si riapre subito dopo aver chiuso.
+    if (reason !== 'avvio') await sleep(300);
     this.setStatus('starting');
 
     const size = { width: { ideal: 1920 }, height: { ideal: 1080 } };
@@ -181,25 +222,32 @@ export class Camera extends EventTarget {
 
     this.stream = stream;
     const track = (this.track = stream.getVideoTracks()[0]);
+    try {
+      const s = track.getSettings();
+      this.note(`ottenuta: ${track.label || '?'} ${s.width}×${s.height}`);
+    } catch {
+      this.note(`ottenuta: ${track.label || '?'}`);
+    }
     track.onended = () => {
-      if (this.track === track) this.check(300, 'traccia terminata');
+      if (this.track !== track) return;
+      this.note('traccia terminata');
+      this.check(300, 'traccia terminata');
     };
     track.onmute = () => {
-      if (this.track === track) this.mutedSince = performance.now();
+      if (this.track !== track) return;
+      this.note('traccia muta');
+      this.mutedSince = performance.now();
     };
     track.onunmute = () => {
       if (this.track !== track) return;
+      this.note('traccia riattivata');
       this.mutedSince = 0;
-      this.video.play().catch(() => {});
+      this.play();
     };
 
     this.video.srcObject = stream;
     this.lastFrame = performance.now();
-    try {
-      await this.video.play();
-    } catch {
-      // verrà ritentato al prossimo tocco
-    }
+    await this.play();
 
     await this.listDevices();
     if (this.autoPickMain()) {
@@ -213,7 +261,7 @@ export class Camera extends EventTarget {
 
   fail(error) {
     const name = error?.name || '';
-    console.warn('[fotocamera] errore:', name, error?.message);
+    this.note(`errore: ${name} ${error?.message || ''}`);
     if (name === 'NotAllowedError' || name === 'SecurityError') {
       this.setStatus('denied');
     } else if (name === 'NotReadableError' || name === 'AbortError') {
@@ -354,23 +402,26 @@ export class Camera extends EventTarget {
   }
 
   // Tiene traccia dell'ultimo fotogramma ricevuto per scoprire un video bloccato.
+  // Due segnali indipendenti (callback per fotogramma e avanzamento di currentTime):
+  // basta uno dei due per considerare il video vivo.
   watchFrames() {
     const v = this.video;
+    this.frames = 0;
     if (typeof v.requestVideoFrameCallback === 'function') {
       const tick = () => {
+        this.frames++;
         this.lastFrame = performance.now();
         if (this.active) v.requestVideoFrameCallback(tick);
       };
       v.requestVideoFrameCallback(tick);
-    } else {
-      let last = -1;
-      this.timers.frames = setInterval(() => {
-        if (v.currentTime !== last) {
-          last = v.currentTime;
-          this.lastFrame = performance.now();
-        }
-      }, 500);
     }
+    let last = -1;
+    this.timers.frames = setInterval(() => {
+      if (v.currentTime !== last) {
+        last = v.currentTime;
+        this.lastFrame = performance.now();
+      }
+    }, 500);
   }
 
   check(delay, reason) {
@@ -393,8 +444,16 @@ export class Camera extends EventTarget {
       this.open('traccia interrotta');
       return;
     }
-    if (this.video.paused) this.video.play().catch(() => {});
-    if (this.status === 'running' && !t.muted && now - this.lastFrame > 3500) {
+    if (this.video.paused) {
+      // Un video in pausa non è "bloccato": si prova a farlo ripartire.
+      if (!this.needsTap) this.play();
+      return;
+    }
+    if (this.status === 'running' && !t.muted && now - this.lastFrame > 4000) {
+      // Al massimo 2 riavvii al minuto: se non basta, inutile insistere.
+      this.frozenRestarts = this.frozenRestarts.filter((x) => now - x < 60000);
+      if (this.frozenRestarts.length >= 2) return;
+      this.frozenRestarts.push(now);
       this.open('immagine ferma');
     }
   }

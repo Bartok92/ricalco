@@ -3,6 +3,10 @@
 // 2) Ripiego tipo NoSleep.js: un video minuscolo in riproduzione continua.
 //    Serve dove l'API non c'è e sulle app installate con iOS precedente al 18.4,
 //    dove l'API risponde ma non tiene davvero acceso lo schermo.
+//
+// Il ripiego NON si usa mentre la fotocamera è attiva: su iOS un secondo video
+// in riproduzione può mettere in pausa quello della fotocamera (schermo nero),
+// e il video della fotocamera in riproduzione tiene già acceso lo schermo.
 
 import media from './vendor/nosleep-media.js';
 import { isIOS, isStandalone, iosVersion } from './ios.js';
@@ -12,6 +16,7 @@ export class KeepAwake {
     this.on = false;
     this.lock = null;
     this.video = null;
+    this.fallbackAllowed = true;
     this.onVisibility = () => {
       if (document.visibilityState === 'visible') this.acquire();
     };
@@ -19,7 +24,7 @@ export class KeepAwake {
     this.onGesture = () => {
       if (!this.on) return;
       if ('wakeLock' in navigator && (!this.lock || this.lock.released)) this.acquire();
-      else if (this.video?.paused) this.video.play().catch(() => {});
+      else if (this.video?.paused && this.fallbackAllowed) this.video.play().catch(() => {});
     };
   }
 
@@ -47,6 +52,13 @@ export class KeepAwake {
     this.stopVideo();
   }
 
+  setFallbackAllowed(allowed) {
+    if (this.fallbackAllowed === allowed) return;
+    this.fallbackAllowed = allowed;
+    if (!allowed) this.stopVideo();
+    else this.acquire();
+  }
+
   stopVideo() {
     if (!this.video) return;
     this.video.pause();
@@ -66,8 +78,18 @@ export class KeepAwake {
       }
     }
     // Il video serve solo come ripiego: con l'API funzionante si spegne.
-    if (!ok || !this.nativeReliable) this.playVideo();
+    if ((!ok || !this.nativeReliable) && this.fallbackAllowed) this.playVideo();
     else this.stopVideo();
+  }
+
+  describe() {
+    const native = !('wakeLock' in navigator)
+      ? 'API assente'
+      : this.lock && !this.lock.released
+        ? 'API attiva'
+        : 'API non attiva';
+    const video = this.video ? (this.video.paused ? 'video di ripiego in pausa' : 'video di ripiego attivo') : 'nessun video di ripiego';
+    return `${native}${this.nativeReliable ? '' : ' (non affidabile qui)'}, ${video}`;
   }
 
   playVideo() {

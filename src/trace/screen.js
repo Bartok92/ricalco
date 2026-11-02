@@ -11,6 +11,7 @@ import { attachGestures } from '../gestures.js';
 import { prepareImage, makeEdges } from '../image.js';
 import { state, saveState, putBlob, getBlob, delBlob } from '../state.js';
 import { FixedEngine } from './fixed-engine.js';
+import { showDiagnostics } from '../ui/diagnostics.js';
 
 // Bianco e nero e contrasto sono filtri CSS che Safari applica in GPU;
 // i contorni invece sono un'immagine calcolata una volta sola.
@@ -61,7 +62,14 @@ const CAMERA_MESSAGES = {
     text: 'Riprovo da solo tra qualche secondo.',
     retry: true,
   },
+  paused: {
+    title: 'Video della fotocamera in pausa',
+    text: 'iPhone ha fermato il video. Tocca il pulsante per farlo ripartire.',
+    play: true,
+  },
 };
+// In questi stati la fotocamera non tiene acceso lo schermo: serve il ripiego.
+const CAMERA_OFF = ['denied', 'busy', 'nocamera', 'insecure', 'unsupported', 'error'];
 
 let rotationTipShown = false;
 
@@ -82,6 +90,7 @@ const TEMPLATE = `
     <h3 class="notice-title"></h3>
     <p class="notice-text"></p>
     <div class="notice-actions">
+      <button class="big-btn primary" data-act="cam-play">${icons.camera}<span>Avvia video</span></button>
       <button class="big-btn primary" data-act="cam-retry">${icons.camera}<span>Attiva fotocamera</span></button>
       <button class="link-btn" data-act="reload">Ricarica l’app</button>
     </div>
@@ -126,6 +135,7 @@ const TEMPLATE = `
       <button class="chip" data-act="guide">${icons.help}<span>Guida</span></button>
       <button class="chip" data-act="home">${icons.home}<span>Schermata iniziale</span></button>
     </div>
+    <div class="sec-foot"><button class="link-btn small" data-act="info">Info tecniche</button></div>
   </div>
 
   <div class="bar">
@@ -183,6 +193,7 @@ export class TraceScreen {
     this.engine = new FixedEngine(this);
     this.camera = new Camera(this.video);
     this.awake = new KeepAwake();
+    this.awake.fallbackAllowed = false; // finché la fotocamera non dice il contrario
 
     this.setupLayout();
     this.setupControls();
@@ -382,10 +393,14 @@ export class TraceScreen {
             this.toast('Ancora nessun permesso: segui le istruzioni qui sotto', 4000);
           }
         });
+      case 'cam-play':
+        return this.camera.play();
+      case 'info':
+        return showDiagnostics(document.body, this);
       case 'reload':
         return location.reload();
       case 'notice-close':
-        this.dismissed = this.camera.status;
+        this.dismissed = this.camera.status === 'running' && this.camera.needsTap ? 'paused' : this.camera.status;
         return this.onCameraStatus();
     }
   }
@@ -726,6 +741,7 @@ export class TraceScreen {
 
   onCameraStatus() {
     const s = this.camera.status;
+    this.awake.setFallbackAllowed(CAMERA_OFF.includes(s));
     const pill = this.q('.cam-pill');
     clearTimeout(this.pillTimer);
     if (s === 'starting') this.pillTimer = setTimeout(() => pill.classList.remove('hidden'), 700);
@@ -736,14 +752,16 @@ export class TraceScreen {
     }
 
     const notice = this.q('.cam-notice');
-    const msg = CAMERA_MESSAGES[s];
-    if (this.dismissed && this.dismissed !== s) this.dismissed = null;
-    if (!msg || this.dismissed === s) {
+    const key = s === 'running' && this.camera.needsTap ? 'paused' : s;
+    const msg = CAMERA_MESSAGES[key];
+    if (this.dismissed && this.dismissed !== key) this.dismissed = null;
+    if (!msg || this.dismissed === key) {
       notice.classList.add('hidden');
       return;
     }
     this.q('.notice-title').textContent = msg.title;
     this.q('.notice-text').innerHTML = msg.text;
+    this.q('[data-act="cam-play"]').classList.toggle('hidden', !msg.play);
     this.q('[data-act="cam-retry"]').classList.toggle('hidden', !msg.retry);
     this.q('[data-act="reload"]').classList.toggle('hidden', !msg.reload);
     notice.classList.remove('hidden');

@@ -4,6 +4,10 @@ import { VitePWA } from 'vite-plugin-pwa';
 export default defineConfig({
   // Percorsi relativi: l'app funziona sia in locale sia in una sottocartella (GitHub Pages).
   base: './',
+  // Data e ora della build, mostrata in "Info tecniche" per sapere quale versione gira.
+  define: {
+    __APP_BUILD__: JSON.stringify(new Date().toLocaleString('it-IT', { timeZone: 'Europe/Rome' })),
+  },
   build: {
     target: ['safari15', 'es2020'],
     assetsInlineLimit: 0,

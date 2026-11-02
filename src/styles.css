@@ -456,6 +456,29 @@ svg {
   padding: 0 14px;
   text-align: left;
 }
+.sec-foot {
+  display: flex;
+  justify-content: center;
+}
+.link-btn.small {
+  min-height: 40px;
+  color: var(--muted);
+  font-size: 14px;
+}
+.diag-hint {
+  margin: 8px 0 10px;
+  color: var(--soft);
+  font-size: 14px;
+}
+.diag {
+  margin: 0 0 14px;
+  padding: 12px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.05);
+  font: 12px/1.5 ui-monospace, Menlo, Consolas, monospace;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
 
 /* blocco */
 .lock-fab {
