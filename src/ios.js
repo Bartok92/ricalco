@@ -55,6 +55,23 @@ export function installTouchGuards() {
   document.addEventListener('dragstart', prevent);
 }
 
+// Nelle app installate su iPhone (barra di stato "black-translucent") la pagina
+// risulta più corta dello schermo di circa l'altezza della barra di stato e in
+// fondo resta una fascia vuota. In quel caso l'app si allunga a tutto lo schermo.
+export function fixStandaloneHeight() {
+  if (!isIOS) return;
+  const apply = () => {
+    if (!isStandalone()) return;
+    const landscape = innerWidth > innerHeight;
+    const full = landscape ? Math.min(screen.width, screen.height) : Math.max(screen.width, screen.height);
+    const h = full > innerHeight && full - innerHeight < 120 ? full : innerHeight;
+    document.documentElement.style.setProperty('--app-h', `${h}px`);
+  };
+  apply();
+  addEventListener('resize', apply);
+  addEventListener('orientationchange', () => setTimeout(apply, 300));
+}
+
 export async function requestPersistentStorage() {
   try {
     if (navigator.storage?.persist && !(await navigator.storage.persisted())) {

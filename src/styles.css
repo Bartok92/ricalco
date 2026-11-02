@@ -51,7 +51,10 @@ body {
 
 #app {
   position: fixed;
-  inset: 0;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: var(--app-h, 100%);
   overflow: hidden;
 }
 
@@ -470,6 +473,11 @@ svg {
   color: var(--soft);
   font-size: 14px;
 }
+.diag-test {
+  margin-bottom: 10px;
+  color: var(--text);
+  text-decoration: none;
+}
 .diag {
   margin: 0 0 14px;
   padding: 12px;
@@ -599,6 +607,13 @@ svg {
 .pill svg {
   width: 18px;
   height: 18px;
+}
+.update-pill {
+  z-index: 16;
+  min-height: 44px;
+  background: var(--accent);
+  color: var(--accent-ink);
+  border: 0;
 }
 
 .notice {

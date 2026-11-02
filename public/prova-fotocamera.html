@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="it">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <title>Prova fotocamera</title>
+    <style>
+      html, body { margin: 0; background: #111; color: #eee; font: 15px -apple-system, sans-serif; }
+      body { padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom); }
+      video { display: block; width: 100%; height: 50vh; object-fit: cover; background: #400; }
+      .row { display: flex; flex-wrap: wrap; gap: 8px; padding: 12px; }
+      button, a { font: inherit; font-weight: 600; padding: 12px 16px; border-radius: 12px; border: 0;
+        background: #ffc83d; color: #231a00; text-decoration: none; }
+      a { background: #333; color: #fff; }
+      #log { margin: 0; padding: 0 12px 24px; white-space: pre-wrap; font: 12px/1.5 ui-monospace, Menlo, monospace; }
+    </style>
+  </head>
+  <body>
+    <!-- Prova di base: solo fotocamera e video, senza il codice di Ricalco.
+         Se qui l'immagine si vede, il problema è nell'app; se no, nel telefono. -->
+    <video id="v" playsinline muted autoplay></video>
+    <div class="row">
+      <button id="again">Riprova</button>
+      <button id="next">Prova un altro obiettivo</button>
+      <a href="./">Torna a Ricalco</a>
+    </div>
+    <pre id="log"></pre>
+    <script>
+      const v = document.getElementById('v');
+      const out = document.getElementById('log');
+      const events = [];
+      let stream = null;
+      let devices = [];
+      let index = -1;
+
+      function note(text) {
+        events.push(new Date().toTimeString().slice(0, 8) + ' ' + text);
+        render();
+      }
+
+      function render() {
+        const t = stream && stream.getVideoTracks()[0];
+        out.textContent = [
+          'PROVA DI BASE (senza Ricalco)',
+          'Installata: ' + (navigator.standalone ? 'sì' : 'no') + ' · ' + (navigator.userAgent.match(/OS [\d_]+|Version\/[\d.]+/g) || []).join(' '),
+          'Traccia: ' + (t ? t.label + ' · ' + t.readyState + (t.muted ? ' · MUTA' : '') : 'nessuna'),
+          'Video: ' + (v.paused ? 'IN PAUSA' : 'in riproduzione') + ' · stato ' + v.readyState + ' · ' +
+            v.videoWidth + '×' + v.videoHeight + ' · t ' + v.currentTime.toFixed(1),
+          'Eventi:',
+          ...events.slice(-14).map((e) => '  ' + e),
+        ].join('\n');
+      }
+
+      async function start(deviceId) {
+        if (stream) stream.getTracks().forEach((t) => t.stop());
+        stream = null;
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({
+            audio: false,
+            video: deviceId ? { deviceId: { exact: deviceId } } : { facingMode: 'environment' },
+          });
+          note('ottenuta: ' + stream.getVideoTracks()[0].label);
+          v.srcObject = stream;
+          await v.play().then(() => note('play ok'), (e) => note('play rifiutato: ' + e.name));
+          devices = (await navigator.mediaDevices.enumerateDevices()).filter((d) => d.kind === 'videoinput');
+        } catch (e) {
+          note('errore: ' + e.name + ' ' + e.message);
+        }
+      }
+
+      document.getElementById('again').onclick = () => start();
+      document.getElementById('next').onclick = () => {
+        if (!devices.length) return start();
+        index = (index + 1) % devices.length;
+        note('provo: ' + devices[index].label);
+        start(devices[index].deviceId);
+      };
+      v.addEventListener('pause', () => note('evento: pausa'));
+      v.addEventListener('playing', () => note('evento: in riproduzione'));
+      v.addEventListener('resize', () => note('dimensione video ' + v.videoWidth + '×' + v.videoHeight));
+      setInterval(render, 500);
+      start();
+    </script>
+  </body>
+</html>

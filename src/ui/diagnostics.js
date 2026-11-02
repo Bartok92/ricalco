@@ -44,6 +44,7 @@ export function showDiagnostics(root, screen) {
         <div class="modal-head"><h2>Info tecniche</h2><button class="icon-btn" data-x aria-label="Chiudi">${icons.close}</button></div>
         <p class="diag-hint">Se qualcosa non funziona, fai uno screenshot di questa pagina e mandalo a chi ti ha dato l’app.</p>
         <pre class="diag"></pre>
+        <a class="big-btn block diag-test" href="prova-fotocamera.html">Prova fotocamera di base</a>
         <button class="big-btn primary block" data-x>Chiudi</button>
       </div>
     </div>`);

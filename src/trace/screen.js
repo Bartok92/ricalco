@@ -76,13 +76,13 @@ let rotationTipShown = false;
 const TEMPLATE = `
 <div class="screen trace">
   <div class="stage">
-    <video class="cam" playsinline webkit-playsinline muted autoplay disablepictureinpicture disableremoteplayback x-webkit-airplay="deny"></video>
     <img class="overlay-img" alt="" draggable="false">
     <canvas class="grid-canvas"></canvas>
     <div class="gesture-layer"></div>
   </div>
 
   <div class="pill cam-pill hidden">${icons.camera}<span>Avvio fotocamera…</span></div>
+  <button class="pill update-pill hidden" data-act="update">${icons.rotate}<span>Nuova versione pronta: tocca per aggiornare</span></button>
 
   <div class="notice cam-notice scroll hidden" role="alert">
     <button class="icon-btn notice-close" data-act="notice-close" aria-label="Chiudi">${icons.close}</button>
@@ -172,9 +172,16 @@ export class TraceScreen {
     this.q = (s) => this.el.querySelector(s);
 
     this.stage = this.q('.stage');
-    this.video = this.q('.cam');
+    // Il <video> si crea direttamente nel documento (non dal <template>): su Safari
+    // un elemento multimediale nato in un documento inerte può comportarsi male.
+    this.video = document.createElement('video');
+    this.video.className = 'cam';
+    for (const a of ['playsinline', 'webkit-playsinline', 'muted', 'autoplay']) this.video.setAttribute(a, '');
     this.video.muted = true;
+    this.video.defaultMuted = true;
     this.video.playsInline = true;
+    this.video.autoplay = true;
+    this.stage.prepend(this.video);
     this.img = this.q('.overlay-img');
     this.gridCanvas = this.q('.grid-canvas');
 
@@ -398,6 +405,7 @@ export class TraceScreen {
       case 'info':
         return showDiagnostics(document.body, this);
       case 'reload':
+      case 'update':
         return location.reload();
       case 'notice-close':
         this.dismissed = this.camera.status === 'running' && this.camera.needsTap ? 'paused' : this.camera.status;
@@ -458,6 +466,10 @@ export class TraceScreen {
     this.invalidate();
     state.fixed = this.engine.serialize();
     saveState();
+  }
+
+  showUpdateReady() {
+    this.q('.update-pill').classList.remove('hidden');
   }
 
   toast(text, ms = 2600) {

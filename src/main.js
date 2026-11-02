@@ -1,5 +1,5 @@
 import './styles.css';
-import { installTouchGuards, requestPersistentStorage } from './ios.js';
+import { installTouchGuards, requestPersistentStorage, fixStandaloneHeight } from './ios.js';
 import { state, loadState, saveState } from './state.js';
 import { registerServiceWorker } from './pwa.js';
 import { renderHome } from './ui/home.js';
@@ -7,6 +7,7 @@ import { showGuide } from './ui/guide.js';
 import { TraceScreen } from './trace/screen.js';
 
 installTouchGuards();
+fixStandaloneHeight();
 
 const root = document.getElementById('app');
 let current = null;
@@ -37,6 +38,7 @@ async function boot() {
   registerServiceWorker(() => {
     updateReady = true;
     if (state.screen === 'home' && !document.querySelector('.modal')) location.reload();
+    else current?.showUpdateReady?.();
   });
   app.go(state.screen === 'fixed' ? 'fixed' : 'home');
   if (!state.onboarded) {
